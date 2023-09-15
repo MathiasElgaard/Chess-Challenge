@@ -7,78 +7,72 @@ public class MyBot : IChessBot
     // Values of pieces: none, pawn, knight, bishop, rook, queen, king
     public readonly int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 };
 
+    // Piece-square table (biased by +50, to avoid tokens spent on negative signs)
     public readonly int[] pieceSquareTable = {
         // Pawns
-          0,  0,  0,  0,  0,  0,  0,  0,
-         50, 50, 50, 50, 50, 50, 50, 50,
-         10, 10, 20, 30, 30, 20, 10, 10,
-          5,  5, 10, 25, 25, 10,  5,  5,
-          0,  0,  0, 20, 20,  0,  0,  0,
-          5, -5,-10,  0,  0,-10, -5,  5,
-          5, 10, 10,-20,-20, 10, 10,  5,
-          0,  0,  0,  0,  0,  0,  0,  0,
+         50,  50,  50,  50,  50,  50,  50,  50,
+        100, 100, 100, 100, 100, 100, 100, 100,
+         60,  60,  70,  80,  80,  70,  60,  60,
+         55,  55,  60,  75,  75,  60,  55,  55,
+         50,  50,  50,  70,  70,  50,  50,  50,
+         55,  55,  40,  50,  50,  40,  45,  55,
+         55,  60,  60,  30,  30,  60,  60,  55,
+         50,  50,  50,  50,  50,  50,  50,  50,
         // Knights
-        -50,-40,-30,-30,-30,-30,-40,-50,
-        -40,-20,  0,  0,  0,  0,-20,-40,
-        -30,  0, 10, 15, 15, 10,  0,-30,
-        -30,  5, 15, 20, 20, 15,  5,-30,
-        -30,  0, 15, 20, 20, 15,  0,-30,
-        -30,  5, 10, 15, 15, 10,  5,-30,
-        -40,-20,  0,  5,  5,  0,-20,-40,
-        -50,-40,-30,-30,-30,-30,-40,-50,
+          0,  10,  20,  20,  20,  20,  10,   0,
+         10,  30,  50,  50,  50,  50,  30,  10,
+         20,  50,  60,  65,  65,  60,  50,  20,
+         20,  55,  65,  70,  70,  65,  55,  20,
+         20,  50,  65,  70,  70,  65,  50,  20,
+         20,  55,  60,  65,  65,  60,  55,  20,
+         10,  30,  50,  55,  55,  50,  30,  10,
+          0,  10,  20,  20,  20,  20,  10,   0,
         // Bishops
-        -20,-10,-10,-10,-10,-10,-10,-20,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -10,  0,  5, 10, 10,  5,  0,-10,
-        -10,  5,  5, 10, 10,  5,  5,-10,
-        -10,  0, 10, 10, 10, 10,  0,-10,
-        -10, 10, 10, 10, 10, 10, 10,-10,
-        -10,  5,  0,  0,  0,  0,  5,-10,
-        -20,-10,-10,-10,-10,-10,-10,-20,
+         30,  40,  40,  40,  40,  40,  40,  30,
+         40,  50,  50,  50,  50,  50,  50,  40,
+         40,  50,  55,  60,  60,  55,  50,  40,
+         40,  55,  55,  60,  60,  55,  55,  40,
+         40,  50,  60,  60,  60,  60,  50,  40,
+         40,  60,  60,  60,  60,  60,  60,  40,
+         40,  55,  50,  50,  50,  50,  55,  40,
+         30,  40,  40,  40,  40,  40,  40,  30,
         // Rooks
-          5,  5,  5,  5,  5,  5,  0,  5,
-          5, 10, 10, 10, 10, 10, 10,  5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-         -5,  0,  0,  0,  0,  0,  0, -5,
-          0,  0,  2,  5,  5,  2,  0,  0,
+         55,  55,  55,  55,  55,  55,  50,  55,
+         55,  60,  60,  60,  60,  60,  60,  55,
+         45,  50,  50,  50,  50,  50,  50,  45,
+         45,  50,  50,  50,  50,  50,  50,  45,
+         45,  50,  50,  50,  50,  50,  50,  45,
+         45,  50,  50,  50,  50,  50,  50,  45,
+         45,  50,  50,  50,  50,  50,  50,  45,
+         50,  50,  50,  55,  55,  50,  50,  50,
         // Queens
-        -20,-10,-10, -5, -5,-10,-10,-20,
-        -10,  0,  0,  0,  0,  0,  0,-10,
-        -10,  0,  5,  5,  5,  5,  0,-10,
-         -5,  0,  5,  5,  5,  5,  0, -5,
-          0,  0,  5,  5,  5,  5,  0, -5,
-        -10,  5,  5,  5,  5,  5,  0,-10,
-        -10,  0,  5,  0,  0,  0,  0,-10,
-        -20,-10,-10, -5, -5,-10,-10,-20,
+         30,  40,  40,  45,  45,  40,  40,  30,
+         40,  50,  50,  50,  50,  50,  50,  40,
+         40,  50,  55,  55,  55,  55,  50,  40,
+         45,  50,  55,  55,  55,  55,  50,  45,
+         50,  50,  55,  55,  55,  55,  50,  45,
+         40,  55,  55,  55,  55,  55,  50,  40,
+         40,  50,  55,  50,  50,  50,  50,  40,
+         30,  40,  40,  45,  45,  40,  40,  30,
         // Kings
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -30,-40,-40,-50,-50,-40,-40,-30,
-        -20,-30,-30,-40,-40,-30,-30,-20,
-        -10,-20,-20,-20,-20,-20,-20,-10,
-         20, 20,  0,  0,  0,  0, 20, 20,
-         20, 30, 10,  0,  0, 10, 30, 20,
+         20,  10,  10,   0,   0,  10,  10,  20,
+         20,  10,  10,   0,   0,  10,  10,  20,
+         20,  10,  10,   0,   0,  10,  10,  20,
+         20,  10,  10,   0,   0,  10,  10,  20,
+         30,  20,  20,  10,  10,  20,  20,  30,
+         40,  30,  30,  30,  30,  30,  30,  40,
+         70,  70,  50,  50,  50,  50,  70,  70,
+         70,  80,  60,  50,  50,  60,  80,  70,
     };
 
     Timer timer;
 
     int maxThinkTime = 1000;
-    int thinkTime;
+    int thinkTime = 1000;
 
-    int bestMoveEval;
     Move bestMove;
 
-    int searchCount;
-
-    public MyBot()
-    {
-        thinkTime = maxThinkTime;
-        searchCount = 0;
-    }
+    int searchCount = 0;
 
     public int StaticEvaluation(Board board)
     {
@@ -94,12 +88,12 @@ public class MyBot : IChessBot
             for (int j = 0; j < pieceLists[i].Count; j++)
             {
                 Piece piece = pieceLists[i].GetPiece(j);
-                evaluation += pieceSquareTable[(64 * i) + 63 - piece.Square.Index];
+                evaluation += pieceSquareTable[(64 * i) + 63 - piece.Square.Index] - 50;
             }
             for (int j = 0; j < pieceLists[i + 6].Count; j++)
             {
                 Piece piece = pieceLists[i + 6].GetPiece(j);
-                evaluation -= pieceSquareTable[(64 * i) + piece.Square.Index];
+                evaluation -= pieceSquareTable[(64 * i) + piece.Square.Index] - 50;
             }
         }
 
@@ -146,22 +140,10 @@ public class MyBot : IChessBot
         if (timer.MillisecondsElapsedThisTurn > thinkTime)
             return 0;
 
-        searchCount++;
-
         int evaluation = StaticEvaluation(board);
         if (evaluation > beta)
             return beta;
         alpha = Math.Max(alpha, evaluation);
-
-        // // Check for checkmate
-        // if (board.IsInCheckmate())
-        // {
-        //     return -(20000 - plyFromRoot); // Checkmate
-        // }
-        // else if (board.IsDraw())
-        // {
-        //     return 0; // Stalemate or draw
-        // }
 
         // Allocate array of moves on the stack
         System.Span<Move> moves = stackalloc Move[256];
@@ -186,9 +168,7 @@ public class MyBot : IChessBot
                 return 0;
 
             if (eval >= beta)
-            {
                 return beta;
-            }
             alpha = Math.Max(alpha, evaluation);
         }
 
@@ -200,31 +180,20 @@ public class MyBot : IChessBot
         if (timer.MillisecondsElapsedThisTurn > thinkTime)
             return 0;
 
-        searchCount++;
-
         // Check for checkmate
         if (board.IsInCheckmate())
-        {
             return -(20000 - plyFromRoot); // Checkmate
-        }
         else if (board.IsDraw())
-        {
             return 0; // Stalemate or draw
-        }
 
         // Search depth reached, return static evaluation of the current position
         if (depth == 0)
-        {
-            return SearchCaptures(board, alpha, beta);
-        }
-
-        //Move[] moves = plyFromRoot == 0 ? bestMoves : board.GetLegalMoves();
+            return StaticEvaluation(board); //SearchCaptures(board, alpha, beta);
 
         // Allocate array of moves on the stack
         System.Span<Move> moves = stackalloc Move[256];
         // Generate legal moves
         board.GetLegalMovesNonAlloc(ref moves);
-
 
         // Allocate array of move scores on the stack
         System.Span<int> moveScores = stackalloc int[256];
@@ -235,8 +204,6 @@ public class MyBot : IChessBot
         {
             int bestMoveIndex = moves.IndexOf(bestMove);
             moveScores[bestMoveIndex] = 20000;
-            // moves[bestMoveIndex] = moves[0];
-            // moves[0] = bestMove;
         }
 
         // Search all moves
@@ -260,10 +227,7 @@ public class MyBot : IChessBot
             {
                 alpha = eval;
                 if (plyFromRoot == 0)
-                {
-                    bestMoveEval = eval;
                     bestMove = move;
-                }
             }
         }
 
@@ -282,12 +246,8 @@ public class MyBot : IChessBot
             if (timer.MillisecondsElapsedThisTurn > thinkTime)
                 break;
 
-            searchCount = 0;
-            bestMoveEval = Search(board, searchDepth, 0, -1000000, 1000000);
-            // Console.WriteLine("depth: " + searchDepth + ", best move: " + bestMove.ToString());
+            Search(board, searchDepth, 0, -1000000, 1000000);
         }
-        // Console.WriteLine("Searched " + searchCount + " positions");
-        // Console.WriteLine("Zobrist: " + board.ZobristKey);
 
         return bestMove;
     }
