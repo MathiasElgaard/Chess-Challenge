@@ -7,72 +7,80 @@ public class MyBot : IChessBot
     // Values of pieces: none, pawn, knight, bishop, rook, queen, king
     public readonly int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 };
 
-    // Piece-square table (biased by +50, to avoid tokens spent on negative signs)
-    public readonly int[] pieceSquareTable = {
+    // Encoded piece-square table
+    public readonly ulong[] pieceSquareTableEncoded = {
         // Pawns
-         50,  50,  50,  50,  50,  50,  50,  50,
-        100, 100, 100, 100, 100, 100, 100, 100,
-         60,  60,  70,  80,  80,  70,  60,  60,
-         55,  55,  60,  75,  75,  60,  55,  55,
-         50,  50,  50,  70,  70,  50,  50,  50,
-         55,  55,  40,  50,  50,  40,  45,  55,
-         55,  60,  60,  30,  30,  60,  60,  55,
-         50,  50,  50,  50,  50,  50,  50,  50,
+        0x88888888,
+        0xFFFFFFFF,
+        0xAABDDBAA,
+        0x99ACCA99,
+        0x888BB888,
+        0x99688679,
+        0x9AA55AA9,
+        0x88888888,
         // Knights
-          0,  10,  20,  20,  20,  20,  10,   0,
-         10,  30,  50,  50,  50,  50,  30,  10,
-         20,  50,  60,  65,  65,  60,  50,  20,
-         20,  55,  65,  70,  70,  65,  55,  20,
-         20,  50,  65,  70,  70,  65,  50,  20,
-         20,  55,  60,  65,  65,  60,  55,  20,
-         10,  30,  50,  55,  55,  50,  30,  10,
-          0,  10,  20,  20,  20,  20,  10,   0,
+        0x01333310,
+        0x15888851,
+        0x38AAAA83,
+        0x39ABBA93,
+        0x38ABBA83,
+        0x39AAAA93,
+        0x15899851,
+        0x01333310,
         // Bishops
-         30,  40,  40,  40,  40,  40,  40,  30,
-         40,  50,  50,  50,  50,  50,  50,  40,
-         40,  50,  55,  60,  60,  55,  50,  40,
-         40,  55,  55,  60,  60,  55,  55,  40,
-         40,  50,  60,  60,  60,  60,  50,  40,
-         40,  60,  60,  60,  60,  60,  60,  40,
-         40,  55,  50,  50,  50,  50,  55,  40,
-         30,  40,  40,  40,  40,  40,  40,  30,
+        0x56666665,
+        0x68888886,
+        0x689AA986,
+        0x699AA996,
+        0x68AAAA86,
+        0x6AAAAAA6,
+        0x69888896,
+        0x56666665,
         // Rooks
-         55,  55,  55,  55,  55,  55,  50,  55,
-         55,  60,  60,  60,  60,  60,  60,  55,
-         45,  50,  50,  50,  50,  50,  50,  45,
-         45,  50,  50,  50,  50,  50,  50,  45,
-         45,  50,  50,  50,  50,  50,  50,  45,
-         45,  50,  50,  50,  50,  50,  50,  45,
-         45,  50,  50,  50,  50,  50,  50,  45,
-         50,  50,  50,  55,  55,  50,  50,  50,
+        0x99999999,
+        0x9AAAAAA9,
+        0x78888887,
+        0x78888887,
+        0x78888887,
+        0x78888887,
+        0x78888887,
+        0x88888888,
         // Queens
-         30,  40,  40,  45,  45,  40,  40,  30,
-         40,  50,  50,  50,  50,  50,  50,  40,
-         40,  50,  55,  55,  55,  55,  50,  40,
-         45,  50,  55,  55,  55,  55,  50,  45,
-         50,  50,  55,  55,  55,  55,  50,  45,
-         40,  55,  55,  55,  55,  55,  50,  40,
-         40,  50,  55,  50,  50,  50,  50,  40,
-         30,  40,  40,  45,  45,  40,  40,  30,
+        0x56677665,
+        0x68888886,
+        0x68999986,
+        0x78999987,
+        0x88999987,
+        0x69999986,
+        0x68988886,
+        0x56677665,
         // Kings
-         20,  10,  10,   0,   0,  10,  10,  20,
-         20,  10,  10,   0,   0,  10,  10,  20,
-         20,  10,  10,   0,   0,  10,  10,  20,
-         20,  10,  10,   0,   0,  10,  10,  20,
-         30,  20,  20,  10,  10,  20,  20,  30,
-         40,  30,  30,  30,  30,  30,  30,  40,
-         70,  70,  50,  50,  50,  50,  70,  70,
-         70,  80,  60,  50,  50,  60,  80,  70,
+        0x31100113,
+        0x31100113,
+        0x31100113,
+        0x31100113,
+        0x53311335,
+        0x65555556,
+        0xBB8888BB,
+        0xBDA88ADB,
     };
 
-    Timer timer;
+    public int[] pieceSquareTable = new int[384];
 
-    int maxThinkTime = 1000;
+    Timer timer;
     int thinkTime = 1000;
 
     Move bestMove;
 
     int searchCount = 0;
+
+    public MyBot()
+    {
+        for (int i = 0; i < 384; i++)
+        {
+            pieceSquareTable[i] = (int)((pieceSquareTableEncoded[i / 8] >> ((i % 8) * 4)) & 15ul);
+        }
+    }
 
     public int StaticEvaluation(Board board)
     {
@@ -182,13 +190,13 @@ public class MyBot : IChessBot
 
         // Check for checkmate
         if (board.IsInCheckmate())
-            return -(20000 - plyFromRoot); // Checkmate
+            return (plyFromRoot - 20000); // Checkmate
         else if (board.IsDraw())
             return 0; // Stalemate or draw
 
         // Search depth reached, return static evaluation of the current position
         if (depth == 0)
-            return StaticEvaluation(board); //SearchCaptures(board, alpha, beta);
+            return SearchCaptures(board, alpha, beta);
 
         // Allocate array of moves on the stack
         System.Span<Move> moves = stackalloc Move[256];
