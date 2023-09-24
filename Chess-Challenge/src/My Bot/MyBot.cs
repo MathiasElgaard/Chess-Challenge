@@ -4,82 +4,98 @@ using System.Numerics;
 
 public class MyBot : IChessBot
 {
+    private struct TTableEntry
+    {
+        public Move BestMove;
+        public ulong ZobristKey;
+        public int Depth;
+        public int Evaluation;
+        public byte EvalType;
+    }
+
     // Values of pieces: none, pawn, knight, bishop, rook, queen, king
-    public readonly int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 };
+    int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 };
 
     // Encoded piece-square table
-    public readonly ulong[] pieceSquareTableEncoded = {
+    ulong[] pieceSquareTableEncoded = {
         // Pawns
-        0x88888888,
-        0xFFFFFFFF,
-        0xAABDDBAA,
-        0x99ACCA99,
-        0x888BB888,
-        0x99688679,
-        0x9AA55AA9,
-        0x88888888,
+        0xFFFFFFFF88888888,
+        0x99ACCA99AABDDBAA,
+        0x99688679888BB888,
+        0x888888889AA55AA9,
         // Knights
-        0x01333310,
-        0x15888851,
-        0x38AAAA83,
-        0x39ABBA93,
-        0x38ABBA83,
-        0x39AAAA93,
-        0x15899851,
-        0x01333310,
+        0x1588885101333310,
+        0x39ABBA9338AAAA83,
+        0x39AAAA9338ABBA83,
+        0x0133331015899851,
         // Bishops
-        0x56666665,
-        0x68888886,
-        0x689AA986,
-        0x699AA996,
-        0x68AAAA86,
-        0x6AAAAAA6,
-        0x69888896,
-        0x56666665,
+        0x6888888656666665,
+        0x699AA996689AA986,
+        0x6AAAAAA668AAAA86,
+        0x5666666569888896,
         // Rooks
-        0x99999999,
-        0x9AAAAAA9,
-        0x78888887,
-        0x78888887,
-        0x78888887,
-        0x78888887,
-        0x78888887,
-        0x88888888,
+        0x9AAAAAA999999999,
+        0x7888888778888887,
+        0x7888888778888887,
+        0x8888888878888887,
         // Queens
-        0x56677665,
-        0x68888886,
-        0x68999986,
-        0x78999987,
-        0x88999987,
-        0x69999986,
-        0x68988886,
-        0x56677665,
+        0x6888888656677665,
+        0x7899998768999986,
+        0x6999998688999987,
+        0x5667766568988886,
         // Kings
-        0x31100113,
-        0x31100113,
-        0x31100113,
-        0x31100113,
-        0x53311335,
-        0x65555556,
-        0xBB8888BB,
-        0xBDA88ADB,
+        0x3110011331100113,
+        0x3110011331100113,
+        0x6555555653311335,
+        0xBDA88ADBBB8888BB,
     };
 
-    public int[] pieceSquareTable = new int[384];
+    int[] pieceSquareTable = new int[384];
+
+    ulong ttMaxEntries = 800000;
+    int ttEntries = 0;
+    TTableEntry[] transpositionTable;
+
+    int lookupCount; // #DEBUG
+    int searchCount; // #DEBUG
+    int betaCutoffCount; // #DEBUG
 
     Timer timer;
-    int thinkTime = 1000;
+    int thinkTime;
+    //int optimumTime;
 
+    //int totalBestMoveChanges;
+
+    int searchDepth;
+
+    int bestEval;
     Move bestMove;
-
-    int searchCount = 0;
 
     public MyBot()
     {
+        transpositionTable = new TTableEntry[ttMaxEntries];
+
         for (int i = 0; i < 384; i++)
         {
-            pieceSquareTable[i] = (int)((pieceSquareTableEncoded[i / 8] >> ((i % 8) * 4)) & 15ul);
+            pieceSquareTable[i] = (int)(pieceSquareTableEncoded[i / 16] >> i % 16 * 4 & 0xF) * 8 - 64;
         }
+    }
+
+    private ref TTableEntry GetTableEntry(Board board)
+    {
+        return ref transpositionTable[board.ZobristKey % ttMaxEntries];
+    }
+
+    public void StoreEvaluation(Board board, Move move, int depth, int eval, byte evalType)
+    {
+        ref TTableEntry tableEntry = ref GetTableEntry(board);
+        //if (tableEntry.Depth == 0)
+        //    ttEntries++;
+        tableEntry.BestMove = move;
+        tableEntry.ZobristKey = board.ZobristKey;
+        tableEntry.Depth = depth;
+        tableEntry.Evaluation = eval;
+        tableEntry.EvalType = evalType;
     }
 
     public int StaticEvaluation(Board board)
@@ -87,6 +103,14 @@ public class MyBot : IChessBot
         int evaluation = 0;
 
         PieceList[] pieceLists = board.GetAllPieceLists();
+
+        //double phase = 24;
+        //for (int i = 0; i < 6; i++)
+        //{
+        //    phase -= phaseValues[i + 1] * pieceLists[i].Count;
+        //    phase -= phaseValues[i + 1] * pieceLists[i + 6].Count;
+        //}
+        //phase /= 24.0;
 
         for (int i = 0; i < 6; i++)
         {
@@ -96,12 +120,26 @@ public class MyBot : IChessBot
             for (int j = 0; j < pieceLists[i].Count; j++)
             {
                 Piece piece = pieceLists[i].GetPiece(j);
-                evaluation += pieceSquareTable[(64 * i) + 63 - piece.Square.Index] - 50;
+                evaluation += pieceSquareTable[(64 * i) + 63 - piece.Square.Index];
+
+                //if (piece.PieceType == PieceType.King)
+                //    pieceSquareValue = (int)((pieceSquareValue * (1.0 - phase)) + ((pieceSquareTable[447 - piece.Square.Index] - 50) * phase));
+
+                //evaluation += pieceSquareValue;
+
+                //evaluation += BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetPieceAttacks(piece.PieceType, piece.Square, board, true));
             }
             for (int j = 0; j < pieceLists[i + 6].Count; j++)
             {
                 Piece piece = pieceLists[i + 6].GetPiece(j);
-                evaluation -= pieceSquareTable[(64 * i) + piece.Square.Index] - 50;
+                evaluation -= pieceSquareTable[(64 * i) + piece.Square.Index];
+
+                //if (piece.PieceType == PieceType.King)
+                //    pieceSquareValue = (int)((pieceSquareValue * (1.0 - phase)) + ((pieceSquareTable[364 + piece.Square.Index] - 50) * phase));
+
+                //evaluation -= pieceSquareValue;
+
+                //evaluation -= BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetPieceAttacks(piece.PieceType, piece.Square, board, false));
             }
         }
 
@@ -127,14 +165,18 @@ public class MyBot : IChessBot
         return moves[startIndex];
     }
 
-    public void GetMoveScores(ref Span<Move> moves, ref Span<int> moveScores)
+    public void GetMoveScores(ref Span<Move> moves, ref Span<int> moveScores, Move searchThisMoveFirst)
     {
         for (int i = 0; i < moves.Length; i++)
         {
             Move move = moves[i];
             int moveScore = 0;
 
-            if (move.CapturePieceType != PieceType.None)
+            if (move == searchThisMoveFirst)
+            {
+                moveScore = 20000;
+            }
+            else if (move.CapturePieceType != PieceType.None)
             {
                 moveScore += 10 * pieceValues[(int)move.CapturePieceType] - pieceValues[(int)move.MovePieceType];
             }
@@ -148,10 +190,10 @@ public class MyBot : IChessBot
         if (timer.MillisecondsElapsedThisTurn > thinkTime)
             return 0;
 
-        int evaluation = StaticEvaluation(board);
-        if (evaluation > beta)
+        int eval = StaticEvaluation(board);
+        if (eval > beta)
             return beta;
-        alpha = Math.Max(alpha, evaluation);
+        alpha = Math.Max(alpha, eval);
 
         // Allocate array of moves on the stack
         System.Span<Move> moves = stackalloc Move[256];
@@ -161,7 +203,7 @@ public class MyBot : IChessBot
         // Allocate array of move scores on the stack
         System.Span<int> moveScores = stackalloc int[256];
         // Generate estimated scores for each move
-        GetMoveScores(ref moves, ref moveScores);
+        GetMoveScores(ref moves, ref moveScores, Move.NullMove);
 
         // Search all moves
         for (int i = 0; i < moves.Length; i++)
@@ -169,7 +211,7 @@ public class MyBot : IChessBot
             Move move = GetMove(ref moves, ref moveScores, i);
             // Make move, recursively search all responses, then undo the move
             board.MakeMove(move);
-            int eval = -SearchCaptures(board, -beta, -alpha);
+            eval = -SearchCaptures(board, -beta, -alpha);
             board.UndoMove(move);
 
             if (timer.MillisecondsElapsedThisTurn > thinkTime)
@@ -177,22 +219,44 @@ public class MyBot : IChessBot
 
             if (eval >= beta)
                 return beta;
-            alpha = Math.Max(alpha, evaluation);
+            alpha = Math.Max(alpha, eval);
         }
 
         return alpha;
     }
 
-    public int Search(Board board, int depth, int plyFromRoot, int alpha, int beta)
+    public int Search(Board board, int depth, int alpha, int beta)
     {
         if (timer.MillisecondsElapsedThisTurn > thinkTime)
             return 0;
 
+        searchCount++; // #DEBUG
         // Check for checkmate
         if (board.IsInCheckmate())
-            return (plyFromRoot - 20000); // Checkmate
+            return -(20000 + depth); // Checkmate
         else if (board.IsDraw())
             return 0; // Stalemate or draw
+
+        TTableEntry tableEntry = GetTableEntry(board);
+
+        if (tableEntry.ZobristKey == board.ZobristKey && tableEntry.Depth >= depth)
+        {
+            if (tableEntry.EvalType == 0)
+            {
+                lookupCount++; // #DEBUG
+                return tableEntry.Evaluation;
+            }
+            else if (tableEntry.EvalType == 3 && tableEntry.Evaluation <= alpha)
+            {
+                lookupCount++; // #DEBUG
+                return alpha;
+            }
+            else if (tableEntry.EvalType == 1 && tableEntry.Evaluation >= beta)
+            {
+                lookupCount++; // #DEBUG
+                return beta;
+            }
+        }
 
         // Search depth reached, return static evaluation of the current position
         if (depth == 0)
@@ -203,16 +267,14 @@ public class MyBot : IChessBot
         // Generate legal moves
         board.GetLegalMovesNonAlloc(ref moves);
 
+        Move searchThisMoveFirst = tableEntry.ZobristKey == board.ZobristKey ? tableEntry.BestMove : Move.NullMove;
+
         // Allocate array of move scores on the stack
         System.Span<int> moveScores = stackalloc int[256];
         // Generate estimated scores for each move
-        GetMoveScores(ref moves, ref moveScores);
+        GetMoveScores(ref moves, ref moveScores, searchThisMoveFirst);
 
-        if (plyFromRoot == 0 && bestMove != Move.NullMove)
-        {
-            int bestMoveIndex = moves.IndexOf(bestMove);
-            moveScores[bestMoveIndex] = 20000;
-        }
+        Move currentBestMove = Move.NullMove;
 
         // Search all moves
         for (int i = 0; i < moves.Length; i++)
@@ -220,7 +282,7 @@ public class MyBot : IChessBot
             Move move = GetMove(ref moves, ref moveScores, i);
             // Make move, recursively search all responses, then undo the move
             board.MakeMove(move);
-            int eval = -Search(board, depth - 1, plyFromRoot + 1, -beta, -alpha);
+            int eval = -Search(board, depth - 1, -beta, -alpha);
             board.UndoMove(move);
 
             if (timer.MillisecondsElapsedThisTurn > thinkTime)
@@ -228,34 +290,79 @@ public class MyBot : IChessBot
 
             if (eval >= beta)
             {
+                StoreEvaluation(board, move, depth, beta, 1);
+                betaCutoffCount++; // #DEBUG
                 return beta;
             }
 
             if (eval > alpha)
             {
                 alpha = eval;
-                if (plyFromRoot == 0)
+                currentBestMove = move;
+                if (depth == searchDepth)
+                {
+                    bestEval = eval; // #DEBUG
                     bestMove = move;
+                }
             }
         }
 
+        StoreEvaluation(board, currentBestMove, depth, alpha, 0);
         return alpha;
     }
 
     public Move Think(Board board, Timer t)
     {
         timer = t;
+        bestEval = 0; // #DEBUG
         bestMove = Move.NullMove;
+        //totalBestMoveChanges = 0;
 
-        thinkTime = Math.Clamp((timer.MillisecondsRemaining - 1000) / 10, 100, 2000);
+        //optimumTime = Math.Max(Math.Min(
+        //    timer.MillisecondsRemaining / 40 + (timer.IncrementMilliseconds / 2),
+        //    timer.MillisecondsRemaining - 500),
+        //    100
+        //);
 
-        for (int searchDepth = 1; searchDepth <= int.MaxValue; searchDepth++)
+        //thinkTime = optimumTime;
+        thinkTime = 1500;
+        //thinkTime = Math.Clamp((timer.MillisecondsRemaining - 1000) / 10, 100, 2000);
+
+        //ulong bitboard = BitboardHelper.GetPieceAttacks(PieceType.Queen, new Square(4, 3), board, true); // #DEBUG
+        //BitboardHelper.VisualizeBitboard(bitboard); // #DEBUG
+
+        for (searchDepth = 1; searchDepth <= int.MaxValue; searchDepth++)
         {
             if (timer.MillisecondsElapsedThisTurn > thinkTime)
                 break;
 
-            Search(board, searchDepth, 0, -1000000, 1000000);
+            lookupCount = 0; // #DEBUG
+            searchCount = 0; // #DEBUG
+            betaCutoffCount = 0; // #DEBUG
+
+            //bestMovePreviousIteration = bestMove;
+
+            Search(board, searchDepth, -1000000, 1000000);
+
+            //if (bestMovePreviousIteration != bestMove)
+            //    totalBestMoveChanges++;
+
+            //double bestMoveInstability = 1 + 0.2 * totalBestMoveChanges;
+            //thinkTime = (int)(optimumTime * bestMoveInstability);
+
+            Console.WriteLine("depth: " + searchDepth + " eval: " + bestEval + " best move: " + bestMove.ToString()); // #DEBUG
+            Console.WriteLine(searchCount + " positions searched"); // #DEBUG
+            Console.WriteLine(lookupCount + " positions looked up"); // #DEBUG
+            Console.WriteLine(betaCutoffCount + " beta cut-offs performed"); // #DEBUG
         }
+
+        unsafe
+        {
+            Console.WriteLine(sizeof(TTableEntry)); // #DEBUG
+        }
+        
+
+        //Console.WriteLine("Occupancy: " + (ttEntries / (double)ttMaxEntries * 100.0) + "%"); // #DEBUG
 
         return bestMove;
     }
