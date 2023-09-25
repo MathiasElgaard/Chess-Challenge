@@ -8,8 +8,8 @@ public class MyBot : IChessBot
     {
         public ulong ZobristKey;
         public Move BestMove;
-        public int Depth;
-        public int Evaluation;
+        public short Depth;
+        public short Evaluation;
     }
 
     // Values of pieces: none, pawn, knight, bishop, rook, queen, king
@@ -51,8 +51,9 @@ public class MyBot : IChessBot
 
     int[] pieceSquareTable = new int[384];
 
-    ulong ttMaxEntries = 800000;
-    int ttEntries = 0;
+    ulong ttMaxEntries = 0x800000; // #DEBUG
+    int ttEntries = 0; // #DEBUG
+    int ttOverwrites = 0; // #DEBUG
     TTableEntry[] transpositionTable;
 
     int lookupCount; // #DEBUG
@@ -72,7 +73,7 @@ public class MyBot : IChessBot
 
     public MyBot()
     {
-        transpositionTable = new TTableEntry[ttMaxEntries];
+        transpositionTable = new TTableEntry[0x800000];
 
         for (int i = 0; i < 384; i++)
         {
@@ -82,16 +83,17 @@ public class MyBot : IChessBot
 
     private ref TTableEntry GetTableEntry(Board board)
     {
-        return ref transpositionTable[board.ZobristKey % ttMaxEntries];
+        return ref transpositionTable[board.ZobristKey & 0x7FFFFF];
     }
 
     public void StoreEvaluation(Board board, Move move, int depth, int eval)
     {
         ref TTableEntry tableEntry = ref GetTableEntry(board);
+        if (tableEntry.Depth == 0) ttEntries++; else ttOverwrites++; // #DEBUG
         tableEntry.BestMove = move;
         tableEntry.ZobristKey = board.ZobristKey;
-        tableEntry.Depth = depth;
-        tableEntry.Evaluation = eval;
+        tableEntry.Depth = (short)depth;
+        tableEntry.Evaluation = (short)eval;
     }
 
     public int StaticEvaluation(Board board)
@@ -339,11 +341,13 @@ public class MyBot : IChessBot
         //);
 
         //thinkTime = optimumTime;
-        thinkTime = 1500;
+        thinkTime = 3000;
         //thinkTime = Math.Clamp((timer.MillisecondsRemaining - 1000) / 10, 100, 2000);
 
         //ulong bitboard = BitboardHelper.GetPieceAttacks(PieceType.Queen, new Square(4, 3), board, true); // #DEBUG
         //BitboardHelper.VisualizeBitboard(bitboard); // #DEBUG
+
+        ttOverwrites = 0; // #DEBUG
 
         for (searchDepth = 1; searchDepth <= int.MaxValue; searchDepth++)
         {
@@ -370,15 +374,7 @@ public class MyBot : IChessBot
             Console.WriteLine(betaCutoffCount + " beta cut-offs performed"); // #DEBUG
         }
 
-        //Console.WriteLine("eval: " + bestEval + " best move: " + bestMove.ToString()); // #DEBUG
-
-        //unsafe
-        //{
-        //    Console.WriteLine(sizeof(TTableEntry)); // #DEBUG
-        //}
-
-
-        //Console.WriteLine("Occupancy: " + (ttEntries / (double)ttMaxEntries * 100.0) + "%"); // #DEBUG
+        //Console.WriteLine("Size : " + ttMaxEntries * 16 / 1000 + "KB\nOccupancy: " + (ttEntries / (double)ttMaxEntries * 100.0) + "%\nOverwrites: " + (ttOverwrites / (double)ttMaxEntries * 100.0) + "%"); // #DEBUG
 
         return bestMove;
     }
