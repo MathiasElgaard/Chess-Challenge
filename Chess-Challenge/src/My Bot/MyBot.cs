@@ -13,43 +13,43 @@ public class MyBot : IChessBot
     }
 
     // Values of pieces: none, pawn, knight, bishop, rook, queen, king
-    int[] pieceValues = { 0, 100, 300, 300, 500, 900, 20000 };
+    int[] pieceValues = { 0, 100, 320, 328, 500, 900, 20000 };
 
     // Encoded piece-square table
     ulong[] pieceSquareTableEncoded = {
         // Pawns
-        0xFFFFFFFF88888888,
-        0x99ACCA99AABDDBAA,
-        0x99688679888BB888,
         0x888888889AA55AA9,
+        0x888BB88897688679,
+        0xAABDDBAA99ACCA99,
+        0x88888888FFFFFFFF,
         // Knights
-        0x1588885101333310,
-        0x39ABBA9338AAAA83,
-        0x39AAAA9338ABBA83,
-        0x0133331015899851,
+        0x1589985101333310,
+        0x38ABBA8339AAAA93,
+        0x38AAAA8339ABBA93,
+        0x0133331015888851,
         // Bishops
-        0x6888888656666665,
-        0x699AA996689AA986,
-        0x6AAAAAA668AAAA86,
-        0x5666666569888896,
+        0x6988889656666665,
+        0x68AAAA866AAAAAA6,
+        0x689AA986699AA996,
+        0x6566666656888888,
         // Rooks
-        0x9AAAAAA999999999,
+        0x7888888788888888,
         0x7888888778888887,
         0x7888888778888887,
-        0x8888888878888887,
+        0x999999999AAAAAA9,
         // Queens
-        0x6888888656677665,
-        0x7899998768999986,
-        0x6999998688999987,
-        0x5667766568988886,
+        0x6898888656677665,
+        0x8899998769999986,
+        0x6899998678999987,
+        0x5667766568888886,
         // Kings
+        0xBB8888BBBDA88ADB,
+        0x5331133565555556,
         0x3110011331100113,
         0x3110011331100113,
-        0x6555555653311335,
-        0xBDA88ADBBB8888BB,
     };
 
-    int[] pieceSquareTable = new int[384];
+    int[] pieceSquareTable = new int[768];
 
     ulong ttMaxEntries = 0x800000; // #DEBUG
     int ttEntries = 0; // #DEBUG
@@ -59,6 +59,7 @@ public class MyBot : IChessBot
     int lookupCount; // #DEBUG
     int searchCount; // #DEBUG
     int betaCutoffCount; // #DEBUG
+    int evaluationCount; // #DEBUG
 
     Timer timer;
     int thinkTime;
@@ -68,7 +69,7 @@ public class MyBot : IChessBot
 
     int searchDepth;
 
-    int bestEval;
+    int bestEval; // #DEBUG
     Move bestMove;
 
     public MyBot()
@@ -76,9 +77,9 @@ public class MyBot : IChessBot
         transpositionTable = new TTableEntry[0x800000];
 
         for (int i = 0; i < 384; i++)
-        {
             pieceSquareTable[i] = (int)(pieceSquareTableEncoded[i / 16] >> i % 16 * 4 & 0xF) * 8 - 64;
-        }
+        for (int i = 0; i < 384; i++)
+            pieceSquareTable[i + 384] = pieceSquareTable[(i & 0xFFFFFFC0) + (i % 64 ^ 56)];
     }
 
     private ref TTableEntry GetTableEntry(Board board)
@@ -89,7 +90,7 @@ public class MyBot : IChessBot
     public void StoreEvaluation(Board board, Move move, int depth, int eval)
     {
         ref TTableEntry tableEntry = ref GetTableEntry(board);
-        if (tableEntry.Depth == 0) ttEntries++; else ttOverwrites++; // #DEBUG
+        //if (tableEntry.Depth == 0) ttEntries++; else ttOverwrites++; // #DEBUG
         tableEntry.BestMove = move;
         tableEntry.ZobristKey = board.ZobristKey;
         tableEntry.Depth = (short)depth;
@@ -98,50 +99,25 @@ public class MyBot : IChessBot
 
     public int StaticEvaluation(Board board)
     {
+        //evaluationCount++; // #DEBUG
         int evaluation = 0;
 
         PieceList[] pieceLists = board.GetAllPieceLists();
 
-        //double phase = 24;
-        //for (int i = 0; i < 6; i++)
-        //{
-        //    phase -= phaseValues[i + 1] * pieceLists[i].Count;
-        //    phase -= phaseValues[i + 1] * pieceLists[i + 6].Count;
-        //}
-        //phase /= 24.0;
-
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 12; i++)
         {
-            evaluation += pieceValues[i + 1] * pieceLists[i].Count;
-            evaluation -= pieceValues[i + 1] * pieceLists[i + 6].Count;
+            int eval = 0;
+            eval += pieceValues[i % 6 + 1] * pieceLists[i].Count;
 
             for (int j = 0; j < pieceLists[i].Count; j++)
-            {
-                Piece piece = pieceLists[i].GetPiece(j);
-                evaluation += pieceSquareTable[(64 * i) + 63 - piece.Square.Index];
+                eval += pieceSquareTable[64 * i + pieceLists[i].GetPiece(j).Square.Index];
 
-                //if (piece.PieceType == PieceType.King)
-                //    pieceSquareValue = (int)((pieceSquareValue * (1.0 - phase)) + ((pieceSquareTable[447 - piece.Square.Index] - 50) * phase));
+            eval = board.IsWhiteToMove == i < 6 ? eval : -eval;
 
-                //evaluation += pieceSquareValue;
-
-                //evaluation += BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetPieceAttacks(piece.PieceType, piece.Square, board, true));
-            }
-            for (int j = 0; j < pieceLists[i + 6].Count; j++)
-            {
-                Piece piece = pieceLists[i + 6].GetPiece(j);
-                evaluation -= pieceSquareTable[(64 * i) + piece.Square.Index];
-
-                //if (piece.PieceType == PieceType.King)
-                //    pieceSquareValue = (int)((pieceSquareValue * (1.0 - phase)) + ((pieceSquareTable[364 + piece.Square.Index] - 50) * phase));
-
-                //evaluation -= pieceSquareValue;
-
-                //evaluation -= BitboardHelper.GetNumberOfSetBits(BitboardHelper.GetPieceAttacks(piece.PieceType, piece.Square, board, false));
-            }
+            evaluation += eval;
         }
 
-        return board.IsWhiteToMove ? evaluation : -evaluation;
+        return evaluation;
     }
 
     public Move GetMove(ref Span<Move> moves, ref Span<int> moveScores, int startIndex)
@@ -168,18 +144,10 @@ public class MyBot : IChessBot
         for (int i = 0; i < moves.Length; i++)
         {
             Move move = moves[i];
-            int moveScore = 0;
-
             if (move == searchThisMoveFirst)
-            {
-                moveScore = 20000;
-            }
+                moveScores[i] = 20000;
             else if (move.CapturePieceType != PieceType.None)
-            {
-                moveScore += 10 * pieceValues[(int)move.CapturePieceType] - pieceValues[(int)move.MovePieceType];
-            }
-
-            moveScores[i] = moveScore;
+                moveScores[i] = 10 * pieceValues[(int)move.CapturePieceType] - pieceValues[(int)move.MovePieceType];
         }
     }
 
@@ -230,7 +198,7 @@ public class MyBot : IChessBot
 
         //alpha = ((alpha + 1 & ~3) + 1);
         //beta = ((beta + 1 & ~3) - 1);
-        searchCount++; // #DEBUG
+        //searchCount++; // #DEBUG
         // Check for checkmate
         if (board.IsInCheckmate())
             return -(20000 + depth * 4); // Checkmate
@@ -307,7 +275,7 @@ public class MyBot : IChessBot
             if (eval >= beta - 1) // beta is LOWER. Subtracting 1 turns it into EXACT.
             {
                 StoreEvaluation(board, move, depth, beta);
-                betaCutoffCount++; // #DEBUG
+                //betaCutoffCount++; // #DEBUG
                 return beta;
             }
 
@@ -341,7 +309,7 @@ public class MyBot : IChessBot
         //);
 
         //thinkTime = optimumTime;
-        thinkTime = 3000;
+        thinkTime = 100;
         //thinkTime = Math.Clamp((timer.MillisecondsRemaining - 1000) / 10, 100, 2000);
 
         //ulong bitboard = BitboardHelper.GetPieceAttacks(PieceType.Queen, new Square(4, 3), board, true); // #DEBUG
@@ -357,6 +325,7 @@ public class MyBot : IChessBot
             lookupCount = 0; // #DEBUG
             searchCount = 0; // #DEBUG
             betaCutoffCount = 0; // #DEBUG
+            evaluationCount = 0; // #DEBUG
 
             //bestMovePreviousIteration = bestMove;
 
@@ -368,11 +337,21 @@ public class MyBot : IChessBot
             //double bestMoveInstability = 1 + 0.2 * totalBestMoveChanges;
             //thinkTime = (int)(optimumTime * bestMoveInstability);
 
-            Console.WriteLine("depth: " + searchDepth + " eval: " + bestEval + " best move: " + bestMove.ToString()); // #DEBUG
-            Console.WriteLine(searchCount + " positions searched"); // #DEBUG
-            Console.WriteLine(lookupCount + " positions looked up"); // #DEBUG
-            Console.WriteLine(betaCutoffCount + " beta cut-offs performed"); // #DEBUG
+            //Console.WriteLine("depth: " + searchDepth + " eval: " + bestEval + " best move: " + bestMove.ToString()); // #DEBUG
+            //Console.WriteLine(searchCount + " positions searched"); // #DEBUG
+            //Console.WriteLine(lookupCount + " positions looked up"); // #DEBUG
+            //Console.WriteLine(betaCutoffCount + " beta cut-offs performed"); // #DEBUG
+            //Console.WriteLine(evaluationCount + " evaluations"); // #DEBUG
         }
+
+        //for (int i = 0; i < 96; i++)
+        //{
+        //    for (int j = 0; j < 8; j++)
+        //    {
+        //        Console.Write(pieceSquareTable[i * 8 + j] + " ");
+        //    }
+        //    Console.WriteLine("");
+        //}
 
         //Console.WriteLine("Size : " + ttMaxEntries * 16 / 1000 + "KB\nOccupancy: " + (ttEntries / (double)ttMaxEntries * 100.0) + "%\nOverwrites: " + (ttOverwrites / (double)ttMaxEntries * 100.0) + "%"); // #DEBUG
 
