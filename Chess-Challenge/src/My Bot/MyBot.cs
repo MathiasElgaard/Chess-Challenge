@@ -6,11 +6,10 @@ public class MyBot : IChessBot
 {
     private struct TTableEntry
     {
-        public Move BestMove;
         public ulong ZobristKey;
+        public Move BestMove;
         public int Depth;
         public int Evaluation;
-        public byte EvalType;
     }
 
     // Values of pieces: none, pawn, knight, bishop, rook, queen, king
@@ -86,16 +85,13 @@ public class MyBot : IChessBot
         return ref transpositionTable[board.ZobristKey % ttMaxEntries];
     }
 
-    public void StoreEvaluation(Board board, Move move, int depth, int eval, byte evalType)
+    public void StoreEvaluation(Board board, Move move, int depth, int eval)
     {
         ref TTableEntry tableEntry = ref GetTableEntry(board);
-        //if (tableEntry.Depth == 0)
-        //    ttEntries++;
         tableEntry.BestMove = move;
         tableEntry.ZobristKey = board.ZobristKey;
         tableEntry.Depth = depth;
         tableEntry.Evaluation = eval;
-        tableEntry.EvalType = evalType;
     }
 
     public int StaticEvaluation(Board board)
@@ -230,31 +226,49 @@ public class MyBot : IChessBot
         if (timer.MillisecondsElapsedThisTurn > thinkTime)
             return 0;
 
+        //alpha = ((alpha + 1 & ~3) + 1);
+        //beta = ((beta + 1 & ~3) - 1);
         searchCount++; // #DEBUG
         // Check for checkmate
         if (board.IsInCheckmate())
-            return -(20000 + depth); // Checkmate
+            return -(20000 + depth * 4); // Checkmate
         else if (board.IsDraw())
             return 0; // Stalemate or draw
 
         TTableEntry tableEntry = GetTableEntry(board);
 
-        if (tableEntry.ZobristKey == board.ZobristKey && tableEntry.Depth >= depth)
+        if (depth != searchDepth && tableEntry.ZobristKey == board.ZobristKey && tableEntry.Depth >= depth)
         {
-            if (tableEntry.EvalType == 0)
+            //if (tableEntry.EvalType == 0)
+            //{
+            //    lookupCount++; // #DEBUG
+            //    return tableEntry.Evaluation;
+            //}
+            //else if (tableEntry.EvalType == 3 && tableEntry.Evaluation <= alpha)
+            //{
+            //    lookupCount++; // #DEBUG
+            //    return alpha;
+            //}
+            //else if (tableEntry.EvalType == 1 && tableEntry.Evaluation >= beta)
+            //{
+            //    lookupCount++; // #DEBUG
+            //    return beta;
+            //}
+            int flag = tableEntry.Evaluation & 3;
+            if (flag == 0b00)
             {
                 lookupCount++; // #DEBUG
                 return tableEntry.Evaluation;
             }
-            else if (tableEntry.EvalType == 3 && tableEntry.Evaluation <= alpha)
-            {
-                lookupCount++; // #DEBUG
-                return alpha;
-            }
-            else if (tableEntry.EvalType == 1 && tableEntry.Evaluation >= beta)
+            else if (flag == 0b01 && tableEntry.Evaluation >= beta)
             {
                 lookupCount++; // #DEBUG
                 return beta;
+            }
+            else if (tableEntry.Evaluation <= alpha)
+            {
+                lookupCount++; // #DEBUG
+                return alpha;
             }
         }
 
@@ -282,15 +296,15 @@ public class MyBot : IChessBot
             Move move = GetMove(ref moves, ref moveScores, i);
             // Make move, recursively search all responses, then undo the move
             board.MakeMove(move);
-            int eval = -Search(board, depth - 1, -beta, -alpha);
+            int eval = -Search(board, depth - 1, -beta, -alpha | 1); // -alpha is either EXACT or LOWER. OR with 1 forces it to LOWER.
             board.UndoMove(move);
 
             if (timer.MillisecondsElapsedThisTurn > thinkTime)
                 return 0;
 
-            if (eval >= beta)
+            if (eval >= beta - 1) // beta is LOWER. Subtracting 1 turns it into EXACT.
             {
-                StoreEvaluation(board, move, depth, beta, 1);
+                StoreEvaluation(board, move, depth, beta);
                 betaCutoffCount++; // #DEBUG
                 return beta;
             }
@@ -307,7 +321,7 @@ public class MyBot : IChessBot
             }
         }
 
-        StoreEvaluation(board, currentBestMove, depth, alpha, 0);
+        StoreEvaluation(board, currentBestMove, depth, alpha);
         return alpha;
     }
 
@@ -342,7 +356,7 @@ public class MyBot : IChessBot
 
             //bestMovePreviousIteration = bestMove;
 
-            Search(board, searchDepth, -1000000, 1000000);
+            Search(board, searchDepth, -32765, 32765);
 
             //if (bestMovePreviousIteration != bestMove)
             //    totalBestMoveChanges++;
@@ -356,11 +370,13 @@ public class MyBot : IChessBot
             Console.WriteLine(betaCutoffCount + " beta cut-offs performed"); // #DEBUG
         }
 
-        unsafe
-        {
-            Console.WriteLine(sizeof(TTableEntry)); // #DEBUG
-        }
-        
+        //Console.WriteLine("eval: " + bestEval + " best move: " + bestMove.ToString()); // #DEBUG
+
+        //unsafe
+        //{
+        //    Console.WriteLine(sizeof(TTableEntry)); // #DEBUG
+        //}
+
 
         //Console.WriteLine("Occupancy: " + (ttEntries / (double)ttMaxEntries * 100.0) + "%"); // #DEBUG
 
